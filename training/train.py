@@ -11,6 +11,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 
+# ----------------------------
+# MLflow configuration
+# ----------------------------
 MLFLOW_TRACKING_URI = os.getenv(
     "MLFLOW_TRACKING_URI",
     "https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow"
@@ -20,6 +23,9 @@ mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 mlflow.set_experiment("security-log-detection")
 
 
+# ----------------------------
+# Utility functions
+# ----------------------------
 def load_config():
     with open("training/config.yaml") as f:
         return yaml.safe_load(f)
@@ -35,10 +41,14 @@ def load_features(path):
     return pd.concat(dfs, ignore_index=True)
 
 
+# ----------------------------
+# Training entrypoint
+# ----------------------------
 def main():
     config = load_config()
     df = load_features(config["data"]["features_path"])
 
+    # Temporary heuristic label
     df["label"] = (df["failures_last_5min"] > 3).astype(int)
 
     X = df.select_dtypes(include=["int64", "float64"]).drop(columns=["label"])
@@ -51,46 +61,48 @@ def main():
         random_state=config["training"]["random_state"]
     )
 
+    # ✅ EVERYTHING INSIDE THE RUN
     with mlflow.start_run() as run:
-    run_id = run.info.run_id
+        run_id = run.info.run_id
 
-    model = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-            ("classifier", LogisticRegression(
-                max_iter=config["model"]["max_iter"],
-                class_weight=config["model"]["class_weight"]
-            ))
-        ]
-    )
+        model = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="median")),
+                ("scaler", StandardScaler()),
+                ("classifier", LogisticRegression(
+                    max_iter=config["model"]["max_iter"],
+                    class_weight=config["model"]["class_weight"]
+                ))
+            ]
+        )
 
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
 
-    precision = precision_score(y_test, preds)
-    recall = recall_score(y_test, preds)
-    f1 = f1_score(y_test, preds)
+        precision = precision_score(y_test, preds)
+        recall = recall_score(y_test, preds)
+        f1 = f1_score(y_test, preds)
 
-    mlflow.log_param("model_type", config["model"]["type"])
-    mlflow.log_param("max_iter", config["model"]["max_iter"])
+        mlflow.log_param("model_type", config["model"]["type"])
+        mlflow.log_param("max_iter", config["model"]["max_iter"])
 
-    mlflow.log_metric("precision", precision)
-    mlflow.log_metric("recall", recall)
-    mlflow.log_metric("f1", f1)
+        mlflow.log_metric("precision", precision)
+        mlflow.log_metric("recall", recall)
+        mlflow.log_metric("f1", f1)
 
-    # ✅ THIS IS THE CRITICAL FIX
-    mlflow.sklearn.log_model(
-        sk_model=model,
-        name="model"
-    )
+        # ✅ CORRECT MODEL LOGGING (REMOTE SAFE)
+        mlflow.sklearn.log_model(
+            sk_model=model,
+            name="model"
+        )
 
-    os.makedirs("artifacts", exist_ok=True)
-    with open("artifacts/run_id.txt", "w") as f:
-        f.write(run_id)
+        # Export run_id for registry step
+        os.makedirs("artifacts", exist_ok=True)
+        with open("artifacts/run_id.txt", "w") as f:
+            f.write(run_id)
 
-    print(f"Training complete. Run ID: {run_id}")
-
+        print(f"Training complete. Run ID: {run_id}")
+        print(f"F1 Score: {f1:.4f}")
 
 
 if __name__ == "__main__":

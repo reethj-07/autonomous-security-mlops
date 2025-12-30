@@ -5,6 +5,7 @@ from mlflow.tracking import MlflowClient
 MODEL_NAME = "security-log-detector"
 RUN_ID_FILE = "artifacts/run_id.txt"
 
+
 def register_latest_model():
     if not os.path.exists(RUN_ID_FILE):
         raise FileNotFoundError("run_id.txt not found. Training step did not export run_id.")
@@ -14,24 +15,18 @@ def register_latest_model():
 
     client = MlflowClient()
 
-    # 🔍 Query remote artifacts from DAGsHub
     artifacts = client.list_artifacts(run_id)
+    artifact_paths = [a.path for a in artifacts]
 
-    print("Available artifacts:", [a.path for a in artifacts])
+    print("Available artifacts:", artifact_paths)
 
-    model_path = None
-    for artifact in artifacts:
-        if artifact.is_dir and artifact.path == "model":
-            model_path = artifact.path
-            break
-
-    if model_path is None:
+    if "model" not in artifact_paths:
         raise RuntimeError(
             f"No model artifact found under run {run_id}. "
-            f"Available artifacts: {[a.path for a in artifacts]}"
+            f"Available artifacts: {artifact_paths}"
         )
 
-    model_uri = f"runs:/{run_id}/{model_path}"
+    model_uri = f"runs:/{run_id}/model"
     print(f"Registering model from {model_uri}")
 
     result = mlflow.register_model(
@@ -40,6 +35,7 @@ def register_latest_model():
     )
 
     print(f"Registered model version: {result.version}")
+
 
 if __name__ == "__main__":
     register_latest_model()
