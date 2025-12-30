@@ -3,3 +3,5 @@ scikit-learn
 pandas
 pyarrow
 dvc
+dagshub
+boto3
