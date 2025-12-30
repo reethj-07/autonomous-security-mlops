@@ -21,10 +21,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r training/requirements.txt
           pip install mlflow scikit-learn pandas pyarrow dvc
 
-      # 🔑 AUTH FOR DAGSHUB DVC
+      # 🔑 DVC AUTH
       - name: Configure DVC credentials
         run: |
           if [ -z "${{ secrets.DAGSHUB_USER }}" ] || [ -z "${{ secrets.DAGSHUB_TOKEN }}" ]; then
@@ -36,28 +36,35 @@ jobs:
           dvc remote modify --local dagshub user "${{ secrets.DAGSHUB_USER }}"
           dvc remote modify --local dagshub password "${{ secrets.DAGSHUB_TOKEN }}"
 
-
-      # 🔑 PULL DATA
+      # 📦 DATA
       - name: Pull feature data from DVC
         run: |
           dvc pull
 
-
+      # 🔐 MLFLOW
       - name: Configure MLflow
         run: |
           echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" >> $GITHUB_ENV
           echo "MLFLOW_TRACKING_USERNAME=${{ secrets.MLFLOW_TRACKING_USERNAME }}" >> $GITHUB_ENV
           echo "MLFLOW_TRACKING_PASSWORD=${{ secrets.MLFLOW_TRACKING_PASSWORD }}" >> $GITHUB_ENV
 
-
+      # 🧠 TRAIN
       - name: Run training
         run: |
           python training/train.py
 
+      # 🔍 VERIFY
+      - name: Verify training artifacts
+        run: |
+          ls -R artifacts
+          cat artifacts/run_id.txt
+
+      # 📌 REGISTER
       - name: Register model
         run: |
           python training/register_model.py
 
+      # 🚦 PROMOTION
       - name: Promotion gate
         run: |
           python training/promote_model.py

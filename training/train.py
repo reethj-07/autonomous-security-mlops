@@ -5,15 +5,12 @@ import pandas as pd
 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import precision_score, recall_score, f1_score
 
 
-# ----------------------------
-# MLflow configuration
-# ----------------------------
 MLFLOW_TRACKING_URI = os.getenv(
     "MLFLOW_TRACKING_URI",
     "https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow"
@@ -23,9 +20,6 @@ mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 mlflow.set_experiment("security-log-detection")
 
 
-# ----------------------------
-# Utility functions
-# ----------------------------
 def load_config():
     with open("training/config.yaml") as f:
         return yaml.safe_load(f)
@@ -41,21 +35,13 @@ def load_features(path):
     return pd.concat(dfs, ignore_index=True)
 
 
-# ----------------------------
-# Training entrypoint
-# ----------------------------
 def main():
     config = load_config()
-
     df = load_features(config["data"]["features_path"])
 
-    # Temporary heuristic label (simulation)
     df["label"] = (df["failures_last_5min"] > 3).astype(int)
 
-    # Use only numeric features
     X = df.select_dtypes(include=["int64", "float64"]).drop(columns=["label"])
-    assert X.shape[1] > 0, "No numeric features found for training"
-
     y = df["label"]
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -80,32 +66,22 @@ def main():
         )
 
         model.fit(X_train, y_train)
-
         preds = model.predict(X_test)
 
-        precision = precision_score(y_test, preds)
-        recall = recall_score(y_test, preds)
-        f1 = f1_score(y_test, preds)
-
         mlflow.log_param("model_type", config["model"]["type"])
-        mlflow.log_param("max_iter", config["model"]["max_iter"])
+        mlflow.log_metric("precision", precision_score(y_test, preds))
+        mlflow.log_metric("recall", recall_score(y_test, preds))
+        mlflow.log_metric("f1", f1_score(y_test, preds))
 
-        mlflow.log_metric("precision", precision)
-        mlflow.log_metric("recall", recall)
-        mlflow.log_metric("f1", f1)
+        # 🔴 CRITICAL
+        mlflow.sklearn.log_model(model, artifact_path="model")
 
-        mlflow.sklearn.log_model(
-            sk_model=model, 
-            artifact_path="model"
-        )
-
-        # 🔑 CRITICAL: persist run_id for register step
-        os.makedirs("training", exist_ok=True)
-        with open("training/latest_run_id.txt", "w") as f:
+        # 🔴 WRITE RUN ID FOR CI
+        os.makedirs("artifacts", exist_ok=True)
+        with open("artifacts/run_id.txt", "w") as f:
             f.write(run_id)
 
-        print(f"Training completed. Run ID: {run_id}")
-        print(f"F1 Score: {f1:.4f}")
+        print(f"Training complete. Run ID: {run_id}")
 
 
 if __name__ == "__main__":
