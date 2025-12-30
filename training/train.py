@@ -31,7 +31,7 @@ def load_features(path):
         if file.endswith(".parquet"):
             dfs.append(pd.read_parquet(os.path.join(path, file)))
     if not dfs:
-        raise RuntimeError("No parquet files found in features path")
+        raise ValueError("No parquet feature files found")
     return pd.concat(dfs, ignore_index=True)
 
 
@@ -51,6 +51,7 @@ def main():
         random_state=config["training"]["random_state"]
     )
 
+    # ✅ EVERYTHING inside the run
     with mlflow.start_run() as run:
         run_id = run.info.run_id
 
@@ -68,14 +69,18 @@ def main():
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
 
+        precision = precision_score(y_test, preds)
+        recall = recall_score(y_test, preds)
+        f1 = f1_score(y_test, preds)
+
         mlflow.log_param("model_type", config["model"]["type"])
         mlflow.log_param("max_iter", config["model"]["max_iter"])
 
-        mlflow.log_metric("precision", precision_score(y_test, preds))
-        mlflow.log_metric("recall", recall_score(y_test, preds))
-        mlflow.log_metric("f1", f1_score(y_test, preds))
+        mlflow.log_metric("precision", precision)
+        mlflow.log_metric("recall", recall)
+        mlflow.log_metric("f1", f1)
 
-        # 🔥 CRITICAL LINE
+        # ✅ THIS WILL NOW ACTUALLY LOG
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="model"
