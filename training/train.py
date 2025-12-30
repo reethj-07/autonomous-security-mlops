@@ -52,36 +52,45 @@ def main():
     )
 
     with mlflow.start_run() as run:
-        run_id = run.info.run_id
+    run_id = run.info.run_id
 
-        model = Pipeline(
-            steps=[
-                ("imputer", SimpleImputer(strategy="median")),
-                ("scaler", StandardScaler()),
-                ("classifier", LogisticRegression(
-                    max_iter=config["model"]["max_iter"],
-                    class_weight=config["model"]["class_weight"]
-                ))
-            ]
-        )
+    model = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+            ("classifier", LogisticRegression(
+                max_iter=config["model"]["max_iter"],
+                class_weight=config["model"]["class_weight"]
+            ))
+        ]
+    )
 
-        model.fit(X_train, y_train)
-        preds = model.predict(X_test)
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
 
-        mlflow.log_param("model_type", config["model"]["type"])
-        mlflow.log_metric("precision", precision_score(y_test, preds))
-        mlflow.log_metric("recall", recall_score(y_test, preds))
-        mlflow.log_metric("f1", f1_score(y_test, preds))
+    precision = precision_score(y_test, preds)
+    recall = recall_score(y_test, preds)
+    f1 = f1_score(y_test, preds)
 
-        # 🔴 CRITICAL
-        mlflow.sklearn.log_model(model, artifact_path="model")
+    mlflow.log_param("model_type", config["model"]["type"])
+    mlflow.log_param("max_iter", config["model"]["max_iter"])
 
-        # 🔴 WRITE RUN ID FOR CI
-        os.makedirs("artifacts", exist_ok=True)
-        with open("artifacts/run_id.txt", "w") as f:
-            f.write(run.info.run_id)
+    mlflow.log_metric("precision", precision)
+    mlflow.log_metric("recall", recall)
+    mlflow.log_metric("f1", f1)
 
-        print(f"Training complete. Run ID: {run_id}")
+    # ✅ THIS IS THE CRITICAL FIX
+    mlflow.sklearn.log_model(
+        sk_model=model,
+        name="model"
+    )
+
+    os.makedirs("artifacts", exist_ok=True)
+    with open("artifacts/run_id.txt", "w") as f:
+        f.write(run_id)
+
+    print(f"Training complete. Run ID: {run_id}")
+
 
 
 if __name__ == "__main__":
