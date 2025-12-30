@@ -1,8 +1,8 @@
 import os
 import yaml
 import mlflow
-import dagshub  # ✅ NEW IMPORT
 import pandas as pd
+# import dagshub  <-- COMMENTED OUT TO PREVENT CI FREEZE
 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
@@ -11,8 +11,17 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score
 
-# ✅ 1. Initialize DagsHub (Configures MLflow + Artifact Storage automatically)
-dagshub.init(repo_owner='reethj-07', repo_name='autonomous-security-mlops', mlflow=True)
+# ✅ CI-FRIENDLY SETUP
+# We use os.getenv to read the secrets directly from GitHub Actions
+# This prevents the "AUTHORIZATION REQUIRED" browser popup
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
+
+# Fallback: If running locally without env vars, use the direct link
+if not MLFLOW_TRACKING_URI:
+    MLFLOW_TRACKING_URI = "https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow"
+
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+mlflow.set_experiment("security-log-detection")
 
 def load_config():
     with open("training/config.yaml") as f:
@@ -22,7 +31,11 @@ def load_features(path):
     dfs = []
     # Check if path exists
     if not os.path.exists(path):
-         raise ValueError(f"Path does not exist: {path}")
+         # Fallback for local testing relative paths
+         if os.path.exists(f"../{path}"):
+             path = f"../{path}"
+         else:
+             raise ValueError(f"Path does not exist: {path}")
          
     for file in os.listdir(path):
         if file.endswith(".parquet"):
@@ -50,6 +63,7 @@ def main():
     )
 
     print("Starting MLflow run...")
+    # ✅ EVERYTHING inside the run context
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         print(f"Run ID: {run_id}")
@@ -81,11 +95,11 @@ def main():
 
         print(f"Logging model to DagsHub... (F1: {f1:.4f})")
         
-        # ✅ Log the model (Boto3 + DagsHub will handle the upload now)
+        # ✅ Log the model directly
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="model",
-            registered_model_name="security-log-model" # Optional: registers immediately
+            registered_model_name="security-log-model"
         )
 
         os.makedirs("artifacts", exist_ok=True)
