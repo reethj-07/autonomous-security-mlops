@@ -22,7 +22,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install mlflow scikit-learn pandas pyarrow dvc
+          # Explicitly install critical libs just in case
+          pip install mlflow scikit-learn pandas pyarrow dvc dagshub boto3
 
       # 🔑 DVC AUTH
       - name: Configure DVC credentials
@@ -48,7 +49,7 @@ jobs:
           echo "MLFLOW_TRACKING_USERNAME=${{ secrets.MLFLOW_TRACKING_USERNAME }}" >> $GITHUB_ENV
           echo "MLFLOW_TRACKING_PASSWORD=${{ secrets.MLFLOW_TRACKING_PASSWORD }}" >> $GITHUB_ENV
 
-      # 🧠 TRAIN
+      # 🧠 TRAIN (Automatically Registers Model)
       - name: Run training
         run: |
           python training/train.py
@@ -59,12 +60,7 @@ jobs:
           ls -R artifacts
           cat artifacts/run_id.txt
 
-      # 📌 REGISTER
-      - name: Register model
-        run: |
-          python training/register_model.py
-
-      # 🚦 PROMOTION
+      # 🚦 PROMOTION (Moves Registered Model -> Staging)
       - name: Promotion gate
         run: |
           python training/promote_model.py

@@ -12,11 +12,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 # ✅ CI-FRIENDLY SETUP
-# We use os.getenv to read the secrets directly from GitHub Actions
-# This prevents the "AUTHORIZATION REQUIRED" browser popup
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
 
-# Fallback: If running locally without env vars, use the direct link
 if not MLFLOW_TRACKING_URI:
     MLFLOW_TRACKING_URI = "https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow"
 
@@ -29,9 +26,7 @@ def load_config():
 
 def load_features(path):
     dfs = []
-    # Check if path exists
     if not os.path.exists(path):
-         # Fallback for local testing relative paths
          if os.path.exists(f"../{path}"):
              path = f"../{path}"
          else:
@@ -63,7 +58,6 @@ def main():
     )
 
     print("Starting MLflow run...")
-    # ✅ EVERYTHING inside the run context
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         print(f"Run ID: {run_id}")
@@ -95,7 +89,7 @@ def main():
 
         print(f"Logging model to DagsHub... (F1: {f1:.4f})")
         
-        # ✅ Log the model directly
+        # ✅ Log AND Register model directly
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="model",
