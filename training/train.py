@@ -65,19 +65,17 @@ def main():
         random_state=config["training"]["random_state"]
     )
 
-    with mlflow.start_run():
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
 
         model = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="median")),
                 ("scaler", StandardScaler()),
-                (
-                    "classifier",
-                    LogisticRegression(
-                        max_iter=config["model"]["max_iter"],
-                        class_weight=config["model"]["class_weight"]
-                    )
-                )
+                ("classifier", LogisticRegression(
+                    max_iter=config["model"]["max_iter"],
+                    class_weight=config["model"]["class_weight"]
+                ))
             ]
         )
 
@@ -89,18 +87,21 @@ def main():
         recall = recall_score(y_test, preds)
         f1 = f1_score(y_test, preds)
 
-        # Log parameters
         mlflow.log_param("model_type", config["model"]["type"])
         mlflow.log_param("max_iter", config["model"]["max_iter"])
 
-        # Log metrics
         mlflow.log_metric("precision", precision)
         mlflow.log_metric("recall", recall)
         mlflow.log_metric("f1", f1)
 
-        # Log full pipeline
         mlflow.sklearn.log_model(model, artifact_path="model")
 
+        # 🔑 CRITICAL: persist run_id for register step
+        os.makedirs("training", exist_ok=True)
+        with open("training/latest_run_id.txt", "w") as f:
+            f.write(run_id)
+
+        print(f"Training completed. Run ID: {run_id}")
         print(f"F1 Score: {f1:.4f}")
 
 
