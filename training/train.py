@@ -79,7 +79,7 @@ def main():
         # 🔴 WRITE RUN ID FOR CI
         os.makedirs("artifacts", exist_ok=True)
         with open("artifacts/run_id.txt", "w") as f:
-            f.write(run_id)
+            f.write(run.info.run_id)
 
         print(f"Training complete. Run ID: {run_id}")
 
