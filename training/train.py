@@ -94,7 +94,10 @@ def main():
         mlflow.log_metric("recall", recall)
         mlflow.log_metric("f1", f1)
 
-        mlflow.sklearn.log_model(model, artifact_path="model")
+        mlflow.sklearn.log_model(
+            sk_model=model, 
+            artifact_path="model"
+        )
 
         # 🔑 CRITICAL: persist run_id for register step
         os.makedirs("training", exist_ok=True)
