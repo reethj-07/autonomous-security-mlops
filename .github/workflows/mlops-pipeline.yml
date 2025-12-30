@@ -25,11 +25,17 @@ jobs:
           pip install mlflow scikit-learn pandas pyarrow dvc
 
       # 🔑 AUTH FOR DAGSHUB DVC
-      - name: Configure DVC remote auth
+      - name: Configure DVC credentials
         run: |
+          if [ -z "${{ secrets.DAGSHUB_USER }}" ] || [ -z "${{ secrets.DAGSHUB_TOKEN }}" ]; then
+            echo "❌ DAGSHUB secrets are missing"
+            exit 1
+          fi
+
           dvc remote modify --local dagshub auth basic
-          dvc remote modify --local dagshub user ${{ secrets.DAGSHUB_USER }}
-          dvc remote modify --local dagshub password ${{ secrets.DAGSHUB_TOKEN }}
+          dvc remote modify --local dagshub user "${{ secrets.DAGSHUB_USER }}"
+          dvc remote modify --local dagshub password "${{ secrets.DAGSHUB_TOKEN }}"
+
 
       # 🔑 PULL DATA
       - name: Pull feature data from DVC
