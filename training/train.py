@@ -38,7 +38,8 @@ def main():
     # TEMPORARY LABEL (simulation)
     df["label"] = (df["failures_last_5min"] > 3).astype(int)
 
-    X = df.drop(columns=["label"])
+    X = df.select_dtypes(include=["int64", "float64"]).drop(columns=["label"])
+    assert X.shape[1] > 0, "No numeric features found for training"
     y = df["label"]
 
     X_train, X_test, y_train, y_test = train_test_split(
