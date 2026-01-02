@@ -17,53 +17,53 @@ from sklearn.metrics import (
     confusion_matrix
 )
 
-# ----------------------------
+# ======================================================
 # CI-FRIENDLY MLFLOW SETUP
-# ----------------------------
+# ======================================================
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
-
 if not MLFLOW_TRACKING_URI:
     MLFLOW_TRACKING_URI = "https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow"
 
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 mlflow.set_experiment("security-log-detection")
 
-# ----------------------------
+# ======================================================
 # UTILS
-# ----------------------------
+# ======================================================
 def load_config():
     with open("training/config.yaml") as f:
         return yaml.safe_load(f)
 
 def load_features(path):
-    dfs = []
+    if not os.path.exists(path) and os.path.exists(f"../{path}"):
+        path = f"../{path}"
 
     if not os.path.exists(path):
-        if os.path.exists(f"../{path}"):
-            path = f"../{path}"
-        else:
-            raise ValueError(f"Path does not exist: {path}")
+        raise ValueError(f"Path does not exist: {path}")
 
-    for file in os.listdir(path):
-        if file.endswith(".parquet"):
-            dfs.append(pd.read_parquet(os.path.join(path, file)))
+    dfs = [
+        pd.read_parquet(os.path.join(path, f))
+        for f in os.listdir(path)
+        if f.endswith(".parquet")
+    ]
 
     if not dfs:
-        raise ValueError(f"No parquet feature files found in {path}")
+        raise ValueError("No parquet feature files found")
 
     return pd.concat(dfs, ignore_index=True)
 
-# ----------------------------
-# TRAINING ENTRYPOINT
-# ----------------------------
+# ======================================================
+# MODULE 3.2 — SECURITY-AWARE TRAINING
+# ======================================================
 def main():
     config = load_config()
+
     print("📦 Loading features...")
     df = load_features(config["data"]["features_path"])
 
-    # ======================================================
-    # MODULE 3.1 — SECURITY-GRADE LABELING (SCHEMA-AWARE)
-    # ======================================================
+    # --------------------------------------------------
+    # LABELING (Leakage-safe)
+    # --------------------------------------------------
     label_conditions = []
 
     if "failures_last_5min" in df.columns:
@@ -73,28 +73,24 @@ def main():
         label_conditions.append(df["latency_p95"] > 800)
 
     if not label_conditions:
-        raise ValueError(
-            "❌ No valid columns available to create labels. "
-            "Check feature engineering pipeline."
-        )
+        raise ValueError("❌ No valid columns for label creation")
 
     df["label"] = pd.concat(label_conditions, axis=1).any(axis=1).astype(int)
 
-    # ======================================================
-    # LEAKAGE-PROOF FEATURE SELECTION
-    # ======================================================
+    # --------------------------------------------------
+    # FEATURE SELECTION (No leakage)
+    # --------------------------------------------------
     LEAKAGE_COLUMNS = {
         "label",
         "failures_last_5min",
         "latency_p95",
-        "error_rate",   # future-proof
+        "error_rate",
     }
 
     numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns
     feature_cols = [c for c in numeric_cols if c not in LEAKAGE_COLUMNS]
 
-    if not feature_cols:
-        raise ValueError("❌ No valid features left after leakage removal")
+    assert feature_cols, "❌ No valid features after leakage removal"
 
     X = df[feature_cols]
     y = df["label"]
@@ -102,9 +98,9 @@ def main():
     print("✅ Training features:", feature_cols)
     print("⚠️ Positive class ratio:", round(y.mean(), 4))
 
-    # ======================================================
-    # TRAIN / TEST SPLIT (STRATIFIED)
-    # ======================================================
+    # --------------------------------------------------
+    # TRAIN / TEST SPLIT
+    # --------------------------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -113,16 +109,18 @@ def main():
         stratify=y
     )
 
-    print("🚀 Starting MLflow run...")
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         print(f"🆔 Run ID: {run_id}")
 
+        # --------------------------------------------------
+        # MODEL
+        # --------------------------------------------------
         model = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="median")),
                 ("scaler", StandardScaler()),
-                ("classifier", LogisticRegression(
+                ("clf", LogisticRegression(
                     max_iter=config["model"]["max_iter"],
                     class_weight=config["model"]["class_weight"]
                 ))
@@ -131,61 +129,60 @@ def main():
 
         model.fit(X_train, y_train)
 
-        # ======================================================
-        # MODULE 3.2 — F2 OPTIMIZATION & THRESHOLDING
-        # ======================================================
+        # --------------------------------------------------
+        # THRESHOLD SEARCH (F2 OPTIMIZATION)
+        # --------------------------------------------------
         probs = model.predict_proba(X_test)[:, 1]
 
-        thresholds = np.linspace(0.01, 0.99, 50)
-        best_f2 = 0.0
-        best_threshold = 0.5
+        thresholds = np.arange(0.01, 0.91, 0.01)
+
+        best = {
+            "threshold": None,
+            "f2": -1
+        }
 
         for t in thresholds:
-            preds_t = (probs >= t).astype(int)
-            f2_t = fbeta_score(y_test, preds_t, beta=2, zero_division=0)
-            if f2_t > best_f2:
-                best_f2 = f2_t
-                best_threshold = t
+            preds = (probs >= t).astype(int)
 
-        final_preds = (probs >= best_threshold).astype(int)
+            f2 = fbeta_score(
+                y_test,
+                preds,
+                beta=2,
+                zero_division=0
+            )
 
-        precision = precision_score(y_test, final_preds, zero_division=0)
-        recall = recall_score(y_test, final_preds, zero_division=0)
-        f1 = f1_score(y_test, final_preds, zero_division=0)
-        f2 = fbeta_score(y_test, final_preds, beta=2, zero_division=0)
+            if f2 > best["f2"]:
+                best.update({
+                    "threshold": t,
+                    "f2": f2,
+                    "precision": precision_score(y_test, preds, zero_division=0),
+                    "recall": recall_score(y_test, preds, zero_division=0),
+                    "f1": f1_score(y_test, preds, zero_division=0),
+                    "cm": confusion_matrix(y_test, preds)
+                })
 
-        cm = confusion_matrix(y_test, final_preds)
-
-        print("📊 Confusion Matrix:")
-        print(cm)
-
+        # --------------------------------------------------
+        # LOG RESULTS
+        # --------------------------------------------------
+        print("🎯 Best Threshold:", round(best["threshold"], 3))
+        print("📊 Confusion Matrix:\n", best["cm"])
         print(
-            f"📈 Metrics @ threshold={best_threshold:.2f} | "
-            f"Precision={precision:.3f} Recall={recall:.3f} "
-            f"F1={f1:.3f} F2={f2:.3f}"
+            f"📈 Metrics @ threshold={best['threshold']:.2f} | "
+            f"P={best['precision']:.3f} "
+            f"R={best['recall']:.3f} "
+            f"F1={best['f1']:.3f} "
+            f"F2={best['f2']:.3f}"
         )
 
-        # ======================================================
-        # LOGGING
-        # ======================================================
-        mlflow.log_param("model_type", config["model"]["type"])
-        mlflow.log_param("max_iter", config["model"]["max_iter"])
-        mlflow.log_param("optimal_threshold", best_threshold)
+        mlflow.log_param("best_threshold", best["threshold"])
+        mlflow.log_metric("precision", best["precision"])
+        mlflow.log_metric("recall", best["recall"])
+        mlflow.log_metric("f1", best["f1"])
+        mlflow.log_metric("f2", best["f2"])
 
-        mlflow.log_metric("precision", precision)
-        mlflow.log_metric("recall", recall)
-        mlflow.log_metric("f1", f1)
-        mlflow.log_metric("f2", f2)
-
-        mlflow.log_metric("tn", cm[0, 0])
-        mlflow.log_metric("fp", cm[0, 1])
-        mlflow.log_metric("fn", cm[1, 0])
-        mlflow.log_metric("tp", cm[1, 1])
-
-        # ======================================================
-        # LOG + REGISTER MODEL
-        # ======================================================
-        print("📦 Logging & registering model to DagsHub...")
+        # --------------------------------------------------
+        # LOG & REGISTER MODEL
+        # --------------------------------------------------
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="model",
@@ -196,7 +193,7 @@ def main():
         with open("artifacts/run_id.txt", "w") as f:
             f.write(run_id)
 
-        print("✅ Training complete. Run ID saved to artifacts/run_id.txt")
+        print("✅ Training complete & model registered")
 
 if __name__ == "__main__":
     main()
