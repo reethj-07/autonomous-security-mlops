@@ -62,7 +62,7 @@ def main():
     df = load_features(config["data"]["features_path"])
 
     # --------------------------------------------------
-    # LABELING (Leakage-safe)
+    # LABELING (Leakage-safe, heuristic)
     # --------------------------------------------------
     label_conditions = []
 
@@ -78,7 +78,7 @@ def main():
     df["label"] = pd.concat(label_conditions, axis=1).any(axis=1).astype(int)
 
     # --------------------------------------------------
-    # FEATURE SELECTION (No leakage)
+    # FEATURE SELECTION (STRICT NO-LEAKAGE)
     # --------------------------------------------------
     LEAKAGE_COLUMNS = {
         "label",
@@ -90,7 +90,8 @@ def main():
     numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns
     feature_cols = [c for c in numeric_cols if c not in LEAKAGE_COLUMNS]
 
-    assert feature_cols, "❌ No valid features after leakage removal"
+    if not feature_cols:
+        raise ValueError("❌ No valid features after leakage removal")
 
     X = df[feature_cols]
     y = df["label"]
@@ -99,7 +100,7 @@ def main():
     print("⚠️ Positive class ratio:", round(y.mean(), 4))
 
     # --------------------------------------------------
-    # TRAIN / TEST SPLIT
+    # TRAIN / TEST SPLIT (STRATIFIED)
     # --------------------------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -130,16 +131,16 @@ def main():
         model.fit(X_train, y_train)
 
         # --------------------------------------------------
-        # THRESHOLD SEARCH (F2 OPTIMIZATION)
-        # --------------------------------------------------
-        # ----------------------------
         # PROBABILITY-BASED INFERENCE
-        # ----------------------------
+        # --------------------------------------------------
         probs = model.predict_proba(X_test)[:, 1]
 
+        # --------------------------------------------------
+        # THRESHOLD SEARCH (F2 OPTIMIZATION)
+        # --------------------------------------------------
         thresholds = np.linspace(0.01, 0.5, 50)
 
-        best_f2 = 0
+        best_f2 = 0.0
         best_threshold = 0.5
         best_metrics = {}
 
@@ -161,9 +162,20 @@ def main():
                     "f2": f2,
                 }
 
-# ----------------------------
-# FINAL EVALUATION
-# ----------------------------
+        # --------------------------------------------------
+        # SAFE FALLBACK (NO POSITIVE PREDICTIONS)
+        # --------------------------------------------------
+        if not best_metrics:
+            best_metrics = {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "f2": 0.0,
+            }
+
+        # --------------------------------------------------
+        # FINAL EVALUATION
+        # --------------------------------------------------
         final_preds = (probs >= best_threshold).astype(int)
         cm = confusion_matrix(y_test, final_preds)
 
@@ -179,15 +191,23 @@ def main():
             f"F2={best_metrics['f2']:.3f}"
         )
 
-# ----------------------------
-# LOG TO MLFLOW
-# ----------------------------
+        # --------------------------------------------------
+        # LOG TO MLFLOW
+        # --------------------------------------------------
+        mlflow.log_metric("positive_class_ratio", y.mean())
         mlflow.log_metric("best_threshold", best_threshold)
         mlflow.log_metric("precision", best_metrics["precision"])
         mlflow.log_metric("recall", best_metrics["recall"])
         mlflow.log_metric("f1", best_metrics["f1"])
         mlflow.log_metric("f2", best_metrics["f2"])
 
+        # Save confusion matrix as artifact
+        os.makedirs("artifacts", exist_ok=True)
+        cm_path = "artifacts/confusion_matrix.txt"
+        with open(cm_path, "w") as f:
+            f.write(str(cm))
+
+        mlflow.log_artifact(cm_path)
 
         # --------------------------------------------------
         # LOG & REGISTER MODEL
@@ -198,7 +218,6 @@ def main():
             registered_model_name="security-log-model"
         )
 
-        os.makedirs("artifacts", exist_ok=True)
         with open("artifacts/run_id.txt", "w") as f:
             f.write(run_id)
 
