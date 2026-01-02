@@ -132,53 +132,62 @@ def main():
         # --------------------------------------------------
         # THRESHOLD SEARCH (F2 OPTIMIZATION)
         # --------------------------------------------------
+        # ----------------------------
+        # PROBABILITY-BASED INFERENCE
+        # ----------------------------
         probs = model.predict_proba(X_test)[:, 1]
 
-        thresholds = np.arange(0.01, 0.91, 0.01)
+        thresholds = np.linspace(0.01, 0.5, 50)
 
-        best = {
-            "threshold": None,
-            "f2": -1
-        }
+        best_f2 = 0
+        best_threshold = 0.5
+        best_metrics = {}
 
         for t in thresholds:
             preds = (probs >= t).astype(int)
 
-            f2 = fbeta_score(
-                y_test,
-                preds,
-                beta=2,
-                zero_division=0
-            )
+            precision = precision_score(y_test, preds, zero_division=0)
+            recall = recall_score(y_test, preds, zero_division=0)
+            f1 = f1_score(y_test, preds, zero_division=0)
+            f2 = fbeta_score(y_test, preds, beta=2, zero_division=0)
 
-            if f2 > best["f2"]:
-                best.update({
-                    "threshold": t,
+            if f2 > best_f2:
+                best_f2 = f2
+                best_threshold = t
+                best_metrics = {
+                    "precision": precision,
+                    "recall": recall,
+                    "f1": f1,
                     "f2": f2,
-                    "precision": precision_score(y_test, preds, zero_division=0),
-                    "recall": recall_score(y_test, preds, zero_division=0),
-                    "f1": f1_score(y_test, preds, zero_division=0),
-                    "cm": confusion_matrix(y_test, preds)
-                })
+                }
 
-        # --------------------------------------------------
-        # LOG RESULTS
-        # --------------------------------------------------
-        print("🎯 Best Threshold:", round(best["threshold"], 3))
-        print("📊 Confusion Matrix:\n", best["cm"])
+# ----------------------------
+# FINAL EVALUATION
+# ----------------------------
+        final_preds = (probs >= best_threshold).astype(int)
+        cm = confusion_matrix(y_test, final_preds)
+
+        print(f"🎯 Best Threshold: {best_threshold:.2f}")
+        print("📊 Confusion Matrix:")
+        print(cm)
+
         print(
-            f"📈 Metrics @ threshold={best['threshold']:.2f} | "
-            f"P={best['precision']:.3f} "
-            f"R={best['recall']:.3f} "
-            f"F1={best['f1']:.3f} "
-            f"F2={best['f2']:.3f}"
+            f"📈 Metrics @ threshold={best_threshold:.2f} | "
+            f"P={best_metrics['precision']:.3f} "
+            f"R={best_metrics['recall']:.3f} "
+            f"F1={best_metrics['f1']:.3f} "
+            f"F2={best_metrics['f2']:.3f}"
         )
 
-        mlflow.log_param("best_threshold", best["threshold"])
-        mlflow.log_metric("precision", best["precision"])
-        mlflow.log_metric("recall", best["recall"])
-        mlflow.log_metric("f1", best["f1"])
-        mlflow.log_metric("f2", best["f2"])
+# ----------------------------
+# LOG TO MLFLOW
+# ----------------------------
+        mlflow.log_metric("best_threshold", best_threshold)
+        mlflow.log_metric("precision", best_metrics["precision"])
+        mlflow.log_metric("recall", best_metrics["recall"])
+        mlflow.log_metric("f1", best_metrics["f1"])
+        mlflow.log_metric("f2", best_metrics["f2"])
+
 
         # --------------------------------------------------
         # LOG & REGISTER MODEL
