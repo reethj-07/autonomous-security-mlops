@@ -58,11 +58,26 @@ def main():
     # ======================================================
     # MODULE 3.1 — SECURITY-GRADE LABELING (NO LEAKAGE)
     # ======================================================
-    df["label"] = (
-        (df["failures_last_5min"] > 3) |
-        (df["error_rate"] > 0.25) |
-        (df["latency_p95"] > 800)
-    ).astype(int)
+    # ----------------------------
+# SECURITY-GRADE LABELING (SCHEMA-AWARE)
+# ----------------------------
+
+    label_conditions = []
+
+    if "failures_last_5min" in df.columns:
+        label_conditions.append(df["failures_last_5min"] > 3)
+
+    if "latency_p95" in df.columns:
+        label_conditions.append(df["latency_p95"] > 800)
+
+    if not label_conditions:
+        raise ValueError(
+        "❌ No valid columns available to create labels. "
+        "Check feature engineering pipeline."
+    )
+
+    df["label"] = pd.concat(label_conditions, axis=1).any(axis=1).astype(int)
+
 
     # ------------------------------------------------------
     # LEAKAGE-PROOF FEATURE SELECTION
