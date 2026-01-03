@@ -1,6 +1,7 @@
 import mlflow
 import os
 from mlflow.tracking import MlflowClient
+from src.safety.kill_switch import is_ml_enabled
 
 # ✅ CI-FRIENDLY SETUP
 # We use os.getenv to read the secrets directly from GitHub Actions
@@ -15,9 +16,12 @@ mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 MODEL_NAME = "security-log-model"
 
 def promote_to_staging():
+    if not is_ml_enabled():
+        print("🛑 ML disabled (SAFE MODE or LOCKDOWN). Promotion blocked.")
+        return
+
     client = MlflowClient()
     
-    # Get the latest version (that train.py just registered)
     versions = client.get_latest_versions(MODEL_NAME, stages=["None"])
     
     if not versions:
@@ -27,7 +31,6 @@ def promote_to_staging():
     latest_version = versions[0].version
     print(f"🚀 Found Model Version: {latest_version}")
     
-    # Promote it
     print(f"Promoting version {latest_version} to Staging...")
     client.transition_model_version_stage(
         name=MODEL_NAME,
@@ -35,6 +38,7 @@ def promote_to_staging():
         stage="Staging"
     )
     print("✅ Success! Model is now in Staging.")
+
 
 if __name__ == "__main__":
     promote_to_staging()
