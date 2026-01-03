@@ -10,22 +10,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ----------------------------
+      # Checkout
+      # ----------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ----------------------------
+      # Python setup
+      # ----------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
+      # ----------------------------
+      # Dependencies
+      # ----------------------------
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # Explicitly install critical libs just in case
+          # Explicit install of critical libs
           pip install mlflow scikit-learn pandas pyarrow dvc dagshub boto3
 
-      # 🔑 DVC AUTH
+      # ----------------------------
+      # 🔑 DVC AUTH (DAGsHub)
+      # ----------------------------
       - name: Configure DVC credentials
         run: |
           if [ -z "${{ secrets.DAGSHUB_USER }}" ] || [ -z "${{ secrets.DAGSHUB_TOKEN }}" ]; then
@@ -37,30 +48,47 @@ jobs:
           dvc remote modify --local dagshub user "${{ secrets.DAGSHUB_USER }}"
           dvc remote modify --local dagshub password "${{ secrets.DAGSHUB_TOKEN }}"
 
-      # 📦 DATA
+      # ----------------------------
+      # 📦 Pull Features
+      # ----------------------------
       - name: Pull feature data from DVC
         run: |
           dvc pull
 
-      # 🔐 MLFLOW
+      # ----------------------------
+      # 🔐 MLflow Auth
+      # ----------------------------
       - name: Configure MLflow
         run: |
           echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" >> $GITHUB_ENV
           echo "MLFLOW_TRACKING_USERNAME=${{ secrets.MLFLOW_TRACKING_USERNAME }}" >> $GITHUB_ENV
           echo "MLFLOW_TRACKING_PASSWORD=${{ secrets.MLFLOW_TRACKING_PASSWORD }}" >> $GITHUB_ENV
 
-      # 🧠 TRAIN (Automatically Registers Model)
+      # ----------------------------
+      # ✅ PYTHONPATH FIX (CRITICAL)
+      # ----------------------------
+      - name: Set PYTHONPATH
+        run: |
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      # ----------------------------
+      # 🧠 Train & Register Model
+      # ----------------------------
       - name: Run training
         run: |
           python training/train.py
 
-      # 🔍 VERIFY
+      # ----------------------------
+      # 🔍 Verify Artifacts
+      # ----------------------------
       - name: Verify training artifacts
         run: |
           ls -R artifacts
           cat artifacts/run_id.txt
 
-      # 🚦 PROMOTION (Moves Registered Model -> Staging)
+      # ----------------------------
+      # 🚦 Promotion Gate (SAFE MODE aware)
+      # ----------------------------
       - name: Promotion gate
         run: |
           python training/promote_model.py
