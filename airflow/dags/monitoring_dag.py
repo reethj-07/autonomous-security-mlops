@@ -1,55 +1,43 @@
-import json
-import os
+# airflow/dags/monitoring_dag.py
+from airflow import DAG
+from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
-from typing import Dict
 
-TRIGGER_FILE = "artifacts/retrain_signal.json"
-COOLDOWN_HOURS = 24
+from airflow.tasks.drift_task import compute_drift
+from airflow.tasks.decision_task import decide_retraining
+from airflow.tasks.retrain_task import run_retraining
 
+default_args = {
+    "owner": "mlops",
+    "depends_on_past": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
 
-def _cooldown_passed(last_trigger_time: str) -> bool:
-    """
-    Prevent retraining storms.
-    """
-    last_time = datetime.fromisoformat(last_trigger_time)
-    return datetime.utcnow() - last_time >= timedelta(hours=COOLDOWN_HOURS)
+with DAG(
+    dag_id="security_monitoring_dag",
+    default_args=default_args,
+    start_date=datetime(2025, 1, 1),
+    schedule_interval="*/6 * * * *",  # every 6 hours
+    catchup=False,
+    tags=["security", "monitoring", "drift"],
+) as dag:
 
+    drift_check = PythonOperator(
+        task_id="compute_drift_metrics",
+        python_callable=compute_drift,
+    )
 
-def emit_retrain_signal(
-    decision: Dict[str, object],
-    reason: str = "drift_detected"
-) -> bool:
-    """
-    Emits a retraining trigger if allowed.
+    decision = PythonOperator(
+        task_id="decide_retraining",
+        python_callable=decide_retraining,
+    )
 
-    Returns True if trigger emitted.
-    """
+    retrain = PythonOperator(
+        task_id="retrain_model",
+        python_callable=run_retraining,
+    )
 
-    if not decision.get("retrain", False):
-        print("✅ No retraining needed.")
-        return False
+    
 
-    # If signal already exists → check cooldown
-    if os.path.exists(TRIGGER_FILE):
-        with open(TRIGGER_FILE) as f:
-            previous = json.load(f)
-
-        if not _cooldown_passed(previous["timestamp"]):
-            print("⏳ Cooldown active. Retraining skipped.")
-            return False
-
-    os.makedirs(os.path.dirname(TRIGGER_FILE), exist_ok=True)
-
-    payload = {
-        "retrain": True,
-        "reason": reason,
-        "feature_drift": decision.get("feature_drift"),
-        "prediction_drift": decision.get("prediction_drift"),
-        "timestamp": datetime.utcnow().isoformat()
-    }
-
-    with open(TRIGGER_FILE, "w") as f:
-        json.dump(payload, f, indent=2)
-
-    print("🚀 Retraining signal emitted.")
-    return True
+    drift_check >> decision >> retrain
