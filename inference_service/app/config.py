@@ -7,22 +7,24 @@ class Settings(BaseSettings):
     # Service metadata
     # -----------------------------
     service_name: str = "security-ml-inference"
-    environment: str = Field(default="local")
+    environment: str = "local"
 
     # -----------------------------
-    # MLflow / Model config
+    # MLflow configuration
     # -----------------------------
     mlflow_tracking_uri: str = Field(
         default="https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow"
     )
+    mlflow_tracking_username: str | None = None
+    mlflow_tracking_password: str | None = None
 
     model_name: str = "security-log-model"
-    model_stage: str = Field(default="Staging")
+    model_stage: str = "Staging"
 
     # -----------------------------
     # Safety controls
     # -----------------------------
-    safe_mode: bool = Field(default=False)
+    safe_mode: bool = False
 
     class Config:
         env_prefix = "INFERENCE_"
