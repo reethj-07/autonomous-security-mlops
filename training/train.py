@@ -16,6 +16,12 @@ from sklearn.metrics import (
     fbeta_score,
     confusion_matrix
 )
+from src.models.anomaly import SecurityIsolationForest
+from src.models.anomaly_calibration import (
+    percentile_threshold,
+    evaluate_anomalies
+)
+
 
 # ======================================================
 # CI-FRIENDLY MLFLOW SETUP
@@ -98,6 +104,26 @@ def main():
 
     print("✅ Training features:", feature_cols)
     print("⚠️ Positive class ratio:", round(y.mean(), 4))
+    # ----------------------------
+# ANOMALY MODEL (UNSUPERVISED)
+# ----------------------------
+    anomaly_model = SecurityIsolationForest(
+    contamination=0.01
+    )
+
+    anomaly_model.fit(X_train)
+
+    train_anomaly_scores = anomaly_model.score(X_train)
+    test_anomaly_scores = anomaly_model.score(X_test)
+
+    print(
+    "🔍 Anomaly Scores | "
+    f"mean={train_anomaly_scores.mean():.4f}, "
+    f"p99={np.percentile(train_anomaly_scores, 99):.4f}"
+    )
+
+    anomaly_model.log_to_mlflow(X_test)
+
 
     # --------------------------------------------------
     # TRAIN / TEST SPLIT (STRATIFIED)

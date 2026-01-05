@@ -39,5 +39,4 @@ with DAG(
     )
 
     
-
     drift_check >> decision >> retrain
