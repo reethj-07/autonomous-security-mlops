@@ -4,6 +4,7 @@ from inference_service.app.routes.health import router as health_router
 from inference_service.app.routes.predict import router as predict_router
 
 
+
 app = FastAPI(
     title="Security ML Inference Service",
     version="1.0.0",
