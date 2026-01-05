@@ -1,3 +1,14 @@
-.env 
-testttt.py
-.dvc/config.local
+# Runtime / generated
+artifacts/
+mlartifacts/
+mlflow.db
+data/raw/
+__pycache__/
+*.pyc
+
+# Local airflow state
+airflow/logs/
+airflow/plugins/
+
+# Environment
+.env
