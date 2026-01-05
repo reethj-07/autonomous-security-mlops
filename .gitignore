@@ -12,3 +12,14 @@ airflow/plugins/
 
 # Environment
 .env
+
+# Local / temp
+testttt.py
+
+# Experimental / future
+configs/
+docker/
+training/retraining_decision.py
+
+# Duplicate / wrong paths
+inference_service/routes/
