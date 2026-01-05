@@ -1,7 +1,7 @@
 # inference_service/app/auth.py
 
 from fastapi import Header, HTTPException, status
-from inference_service.app.config import settings
+from app.config import settings
 
 
 def require_api_key(x_api_key: str = Header(...)):

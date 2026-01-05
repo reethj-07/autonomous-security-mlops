@@ -5,11 +5,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import JSONResponse
 
-from inference_service.app.config import settings
-from inference_service.app.rate_limit import limiter
-from inference_service.app.middleware import abuse_monitor
-from inference_service.app.routes.health import router as health_router
-from inference_service.app.routes.predict import router as predict_router
+from app.config import settings
+from app.rate_limit import limiter
+
+from app.middleware import abuse_monitor
+from app.routes.health import router as health_router
+from app.routes.predict import router as predict_router
 
 
 app = FastAPI(

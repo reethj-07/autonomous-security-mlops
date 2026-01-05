@@ -36,3 +36,5 @@ mlflow.db
 .env
 C:\autonomous-security-mlops\inference_service\app\__pycache__"__pycache__/" 
 "*.pyc" 
+"__pycache__/" 
+"*.pyc" 

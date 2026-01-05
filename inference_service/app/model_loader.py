@@ -1,6 +1,7 @@
 import mlflow
 from functools import lru_cache
-from inference_service.app.config import settings
+from app.config import settings
+
 
 
 @lru_cache()

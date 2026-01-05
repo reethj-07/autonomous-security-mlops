@@ -1,39 +1,54 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from time import time
+import pandas as pd
 
-from inference_service.app.schemas import PredictionRequest, PredictionResponse
-from inference_service.app.model_loader import get_model
-from inference_service.app.config import settings
-from inference_service.app.safety import check_safe_mode
+from app.schemas import PredictionRequest, PredictionResponse
+from app.model_loader import get_model
+from app.safety import enforce_prediction_allowed
+from app.auth import require_api_key
+from app.config import settings
+
 
 router = APIRouter(prefix="/predict", tags=["Inference"])
 
 
-@router.post("", response_model=PredictionResponse)
+@router.post(
+    "",
+    response_model=PredictionResponse,
+    dependencies=[Depends(require_api_key)],
+)
 def predict(request: PredictionRequest):
     """
     Run ML inference on a single security event.
     """
 
-    # -----------------------------
-    # SAFETY GATE
-    # -----------------------------
-    check_safe_mode()
+    # 🔐 SAFETY GATE
+    enforce_prediction_allowed()
 
     model = get_model()
 
-    features = [[
-        request.event_hour,
-        request.is_login_failure,
-        request.is_privilege_change,
-        request.request_length,
-        request.has_sql_keywords,
-        request.is_admin_path,
-    ]]
+    # ✅ IMPORTANT: PyFunc expects DataFrame
+    input_df = pd.DataFrame([{
+        "event_hour": request.event_hour,
+        "is_login_failure": request.is_login_failure,
+        "is_privilege_change": request.is_privilege_change,
+        "request_length": request.request_length,
+        "has_sql_keywords": request.has_sql_keywords,
+        "is_admin_path": request.is_admin_path,
+    }])
 
     start = time()
-    prob = float(model.predict_proba(features)[0][1])
+
+    # ✅ PyFunc-compatible prediction
+    preds = model.predict(input_df)
+
     latency_ms = round((time() - start) * 1000, 2)
+
+    # ✅ Handle different return formats safely
+    if hasattr(preds, "__len__"):
+        prob = float(preds[0])
+    else:
+        prob = float(preds)
 
     prediction = int(prob >= request.threshold)
 

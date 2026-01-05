@@ -1,20 +1,13 @@
 from fastapi import HTTPException, status
-from inference_service.app.config import settings
+from app.config import settings
 
 
-def is_prediction_allowed() -> bool:
+def enforce_prediction_allowed():
     """
-    Returns True if inference is allowed.
+    Blocks inference when SAFE MODE is enabled.
     """
-    return not settings.safe_mode
-
-
-def check_safe_mode() -> None:
-    """
-    Raises HTTP 503 if SAFE MODE is enabled.
-    """
-    if not is_prediction_allowed():
+    if settings.safe_mode:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="SAFE MODE enabled. Predictions are temporarily disabled."
+            detail="SAFE MODE enabled: inference temporarily disabled",
         )
