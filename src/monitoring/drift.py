@@ -1,52 +1,59 @@
-import numpy as np
-import pandas as pd
+from typing import Dict, Optional
+from src.monitoring.drift_metrics import is_drift_severe
 
 
-def calculate_psi(expected: pd.Series, actual: pd.Series, bins: int = 10) -> float:
+def should_retrain(
+    feature_drift: Dict[str, float],
+    prediction_drift_score: Optional[float] = None,
+    psi_threshold: float = 0.25,
+    prediction_drift_threshold: float = 0.15,
+) -> Dict[str, object]:
     """
-    Population Stability Index (PSI)
+    Central retraining decision engine.
+
+    Parameters
+    ----------
+    feature_drift : dict
+        Feature-wise PSI or drift scores
+    prediction_drift_score : float, optional
+        Aggregate prediction drift score
+    psi_threshold : float
+        Threshold above which feature drift is considered severe
+    prediction_drift_threshold : float
+        Threshold above which prediction drift is severe
+
+    Returns
+    -------
+    dict
+        Structured retraining decision (audit-friendly)
     """
 
-    def _scale(series):
-        return (series - series.min()) / (series.max() - series.min() + 1e-6)
-
-    expected = _scale(expected)
-    actual = _scale(actual)
-
-    breakpoints = np.linspace(0, 1, bins + 1)
-
-    expected_bins = pd.cut(expected, breakpoints, include_lowest=True)
-    actual_bins = pd.cut(actual, breakpoints, include_lowest=True)
-
-    expected_dist = expected_bins.value_counts(normalize=True).sort_index()
-    actual_dist = actual_bins.value_counts(normalize=True).sort_index()
-
-    psi = np.sum(
-        (actual_dist - expected_dist)
-        * np.log((actual_dist + 1e-6) / (expected_dist + 1e-6))
+    # -------------------------------
+    # Feature drift decision
+    # -------------------------------
+    feature_drift_flag = is_drift_severe(
+        feature_drift,
+        threshold=psi_threshold
     )
 
-    return float(psi)
+    # -------------------------------
+    # Prediction drift decision
+    # -------------------------------
+    prediction_drift_flag = False
+    if prediction_drift_score is not None:
+        prediction_drift_flag = (
+            prediction_drift_score > prediction_drift_threshold
+        )
 
+    # -------------------------------
+    # Final verdict
+    # -------------------------------
+    retrain = feature_drift_flag or prediction_drift_flag
 
-def feature_drift_report(
-    reference_df: pd.DataFrame,
-    current_df: pd.DataFrame,
-    feature_columns: list,
-    psi_threshold: float = 0.2,
-):
-    """
-    Computes PSI per feature and flags drift.
-    """
-
-    report = {}
-
-    for feature in feature_columns:
-        psi = calculate_psi(reference_df[feature], current_df[feature])
-
-        report[feature] = {
-            "psi": round(psi, 4),
-            "drift_detected": psi > psi_threshold,
-        }
-
-    return report
+    return {
+        "retrain": retrain,
+        "feature_drift": feature_drift_flag,
+        "prediction_drift": prediction_drift_flag,
+        "psi_threshold": psi_threshold,
+        "prediction_drift_threshold": prediction_drift_threshold,
+    }
