@@ -22,4 +22,15 @@ docker/
 training/retraining_decision.py
 
 # Duplicate / wrong paths
-inference_service/routes/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# MLflow local artifacts
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Env
+.env
