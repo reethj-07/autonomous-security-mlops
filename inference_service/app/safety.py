@@ -11,8 +11,7 @@ def enforce_prediction_allowed():
         raise HTTPException (
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="SAFE MODE enabled: inference temporarily disabled",
-
-from inference_service.app.config import settings
+            )
 
 
 def enforce_inference_safety():
