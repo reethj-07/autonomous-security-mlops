@@ -26,7 +26,6 @@ training/retraining_decision.py
 # Duplicate / wrong paths
 
 # Python cache
-__pycache__/
 *.pyc
 
 # MLflow local artifacts
@@ -40,3 +39,5 @@ C:\autonomous-security-mlops\inference_service\app\__pycache__"__pycache__/"
 "*.pyc" 
 "__pycache__/" 
 "*.pyc" 
+# OS
+.DS_Store
