@@ -16,22 +16,21 @@ from sklearn.metrics import (
     fbeta_score,
     confusion_matrix
 )
+
 from src.models.anomaly import SecurityIsolationForest
-from src.models.anomaly_calibration import (
-    percentile_threshold,
-    evaluate_anomalies
-)
 
 
 # ======================================================
 # CI-FRIENDLY MLFLOW SETUP
 # ======================================================
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
-if not MLFLOW_TRACKING_URI:
-    MLFLOW_TRACKING_URI = "https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow"
+MLFLOW_TRACKING_URI = os.getenv(
+    "MLFLOW_TRACKING_URI",
+    "https://dagshub.com/reethj-07/autonomous-security-mlops.mlflow",
+)
 
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 mlflow.set_experiment("security-log-detection")
+
 
 # ======================================================
 # UTILS
@@ -39,6 +38,7 @@ mlflow.set_experiment("security-log-detection")
 def load_config():
     with open("training/config.yaml") as f:
         return yaml.safe_load(f)
+
 
 def load_features(path):
     if not os.path.exists(path) and os.path.exists(f"../{path}"):
@@ -58,6 +58,7 @@ def load_features(path):
 
     return pd.concat(dfs, ignore_index=True)
 
+
 # ======================================================
 # MODULE 3.2 — SECURITY-AWARE TRAINING
 # ======================================================
@@ -68,7 +69,7 @@ def main():
     df = load_features(config["data"]["features_path"])
 
     # --------------------------------------------------
-    # LABELING (Leakage-safe, heuristic)
+    # LABELING (Leakage-safe heuristic)
     # --------------------------------------------------
     label_conditions = []
 
@@ -102,28 +103,18 @@ def main():
     X = df[feature_cols]
     y = df["label"]
 
+    pos_ratio = y.mean()
     print("✅ Training features:", feature_cols)
-    print("⚠️ Positive class ratio:", round(y.mean(), 4))
-    # ----------------------------
-# ANOMALY MODEL (UNSUPERVISED)
-# ----------------------------
-    anomaly_model = SecurityIsolationForest(
-    contamination=0.01
-    )
+    print("⚠️ Positive class ratio:", round(pos_ratio, 4))
 
-    anomaly_model.fit(X_train)
-
-    train_anomaly_scores = anomaly_model.score(X_train)
-    test_anomaly_scores = anomaly_model.score(X_test)
-
-    print(
-    "🔍 Anomaly Scores | "
-    f"mean={train_anomaly_scores.mean():.4f}, "
-    f"p99={np.percentile(train_anomaly_scores, 99):.4f}"
-    )
-
-    anomaly_model.log_to_mlflow(X_test)
-
+    # --------------------------------------------------
+    # 🚨 CI GUARD — INVALID TRAINING DATA
+    # --------------------------------------------------
+    if pos_ratio < 0.001:
+        raise ValueError(
+            f"Positive class ratio too low ({pos_ratio:.4f}). "
+            "Aborting training to avoid invalid model."
+        )
 
     # --------------------------------------------------
     # TRAIN / TEST SPLIT (STRATIFIED)
@@ -133,39 +124,55 @@ def main():
         y,
         test_size=config["training"]["test_size"],
         random_state=config["training"]["random_state"],
-        stratify=y
+        stratify=y,
     )
 
+    print("📐 Train shape:", X_train.shape, "Test shape:", X_test.shape)
+
+    # --------------------------------------------------
+    # UNSUPERVISED ANOMALY MODEL (TRAIN ONLY ON TRAIN SET)
+    # --------------------------------------------------
+    anomaly_model = SecurityIsolationForest(contamination=0.01)
+    anomaly_model.fit(X_train)
+
+    train_scores = anomaly_model.score(X_train)
+    test_scores = anomaly_model.score(X_test)
+
+    print(
+        "🔍 Anomaly scores | "
+        f"mean={train_scores.mean():.4f}, "
+        f"p99={np.percentile(train_scores, 99):.4f}"
+    )
+
+    # --------------------------------------------------
+    # SUPERVISED MODEL
+    # --------------------------------------------------
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         print(f"🆔 Run ID: {run_id}")
 
-        # --------------------------------------------------
-        # MODEL
-        # --------------------------------------------------
         model = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="median")),
                 ("scaler", StandardScaler()),
-                ("clf", LogisticRegression(
-                    max_iter=config["model"]["max_iter"],
-                    class_weight=config["model"]["class_weight"]
-                ))
+                (
+                    "clf",
+                    LogisticRegression(
+                        max_iter=config["model"]["max_iter"],
+                        class_weight=config["model"]["class_weight"],
+                    ),
+                ),
             ]
         )
 
         model.fit(X_train, y_train)
 
-        # --------------------------------------------------
-        # PROBABILITY-BASED INFERENCE
-        # --------------------------------------------------
         probs = model.predict_proba(X_test)[:, 1]
 
         # --------------------------------------------------
         # THRESHOLD SEARCH (F2 OPTIMIZATION)
         # --------------------------------------------------
         thresholds = np.linspace(0.01, 0.5, 50)
-
         best_f2 = 0.0
         best_threshold = 0.5
         best_metrics = {}
@@ -188,46 +195,22 @@ def main():
                     "f2": f2,
                 }
 
-        # --------------------------------------------------
-        # SAFE FALLBACK (NO POSITIVE PREDICTIONS)
-        # --------------------------------------------------
         if not best_metrics:
-            best_metrics = {
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
-                "f2": 0.0,
-            }
+            best_metrics = dict(precision=0.0, recall=0.0, f1=0.0, f2=0.0)
 
-        # --------------------------------------------------
-        # FINAL EVALUATION
-        # --------------------------------------------------
         final_preds = (probs >= best_threshold).astype(int)
         cm = confusion_matrix(y_test, final_preds)
 
-        print(f"🎯 Best Threshold: {best_threshold:.2f}")
-        print("📊 Confusion Matrix:")
-        print(cm)
-
-        print(
-            f"📈 Metrics @ threshold={best_threshold:.2f} | "
-            f"P={best_metrics['precision']:.3f} "
-            f"R={best_metrics['recall']:.3f} "
-            f"F1={best_metrics['f1']:.3f} "
-            f"F2={best_metrics['f2']:.3f}"
-        )
+        print(f"🎯 Best threshold: {best_threshold:.2f}")
+        print("📊 Confusion Matrix:\n", cm)
 
         # --------------------------------------------------
         # LOG TO MLFLOW
         # --------------------------------------------------
-        mlflow.log_metric("positive_class_ratio", y.mean())
+        mlflow.log_metric("positive_class_ratio", pos_ratio)
         mlflow.log_metric("best_threshold", best_threshold)
-        mlflow.log_metric("precision", best_metrics["precision"])
-        mlflow.log_metric("recall", best_metrics["recall"])
-        mlflow.log_metric("f1", best_metrics["f1"])
-        mlflow.log_metric("f2", best_metrics["f2"])
+        mlflow.log_metrics(best_metrics)
 
-        # Save confusion matrix as artifact
         os.makedirs("artifacts", exist_ok=True)
         cm_path = "artifacts/confusion_matrix.txt"
         with open(cm_path, "w") as f:
@@ -235,19 +218,17 @@ def main():
 
         mlflow.log_artifact(cm_path)
 
-        # --------------------------------------------------
-        # LOG & REGISTER MODEL
-        # --------------------------------------------------
         mlflow.sklearn.log_model(
-            sk_model=model,
+            model,
             artifact_path="model",
-            registered_model_name="security-log-model"
+            registered_model_name="security-log-model",
         )
 
         with open("artifacts/run_id.txt", "w") as f:
             f.write(run_id)
 
         print("✅ Training complete & model registered")
+
 
 if __name__ == "__main__":
     main()
