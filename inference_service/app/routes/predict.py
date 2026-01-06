@@ -9,15 +9,6 @@ from app.auth import require_api_key
 from app.config import settings
 
 
-from fastapi import APIRouter
-from time import time
-
-from inference_service.app.schemas import PredictionRequest, PredictionResponse
-from inference_service.app.model_loader import get_model
-from inference_service.app.config import settings
-from inference_service.app.safety import check_safe_mode
-
-
 router = APIRouter(prefix="/predict", tags=["Inference"])
 
 

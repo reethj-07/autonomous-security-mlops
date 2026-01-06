@@ -7,7 +7,7 @@ on:
 
 jobs:
   # =====================================================
-  # 1️⃣ TRAINING & MODEL REGISTRATION PIPELINE
+  # 1️⃣ TRAINING & MODEL REGISTRATION
   # =====================================================
   train-and-validate:
     runs-on: ubuntu-latest
@@ -27,15 +27,22 @@ jobs:
           pip install -r requirements.txt
           pip install mlflow scikit-learn pandas pyarrow dvc dagshub boto3
 
+      # 🔑 DVC AUTH (DAGsHub)
       - name: Configure DVC credentials
         run: |
+          if [ -z "${{ secrets.DAGSHUB_USER }}" ] || [ -z "${{ secrets.DAGSHUB_TOKEN }}" ]; then
+            echo "❌ DAGSHUB secrets missing"
+            exit 1
+          fi
+
           dvc remote modify --local dagshub auth basic
           dvc remote modify --local dagshub user "${{ secrets.DAGSHUB_USER }}"
           dvc remote modify --local dagshub password "${{ secrets.DAGSHUB_TOKEN }}"
 
-      - name: Pull feature data from DVC
+      - name: Pull feature data
         run: dvc pull
 
+      # 🔐 MLflow Auth
       - name: Configure MLflow
         run: |
           echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" >> $GITHUB_ENV
@@ -57,7 +64,7 @@ jobs:
         run: python training/promote_model.py
 
   # =====================================================
-  # 2️⃣ INFERENCE SERVICE CI (NO TRAINING HERE)
+  # 2️⃣ INFERENCE SERVICE CI (NO TRAINING)
   # =====================================================
   inference-ci:
     name: Inference Service CI
@@ -104,4 +111,47 @@ jobs:
           EOF
 
       - name: Docker build inference image
-        run: docker build -t security-inference-ci -f inference_service/Dockerfile .
+        run: |
+          docker build \
+            -f inference_service/Dockerfile \
+            -t security-inference-ci .
+
+  # =====================================================
+  # 3️⃣ BUILD & PUSH DOCKER IMAGE (GHCR)
+  # =====================================================
+  push-inference-image:
+    name: Push Inference Image to GHCR
+    runs-on: ubuntu-latest
+    needs: inference-ci
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & tag image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}/security-inference
+          SHA=${{ github.sha }}
+
+          docker build \
+            -f inference_service/Dockerfile \
+            -t $IMAGE:$SHA \
+            -t $IMAGE:staging \
+            -t $IMAGE:latest \
+            .
+
+      - name: Push image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}/security-inference
+          docker push --all-tags $IMAGE
