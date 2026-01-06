@@ -5,13 +5,15 @@ mlflow.db
 data/raw/
 __pycache__/
 *.pyc
-
+*.pyo
+*.pyd
 # Local airflow state
 airflow/logs/
 airflow/plugins/
 
 # Environment
 .env
+
 
 # Local / temp
 testttt.py

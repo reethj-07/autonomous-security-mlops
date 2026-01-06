@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+<<<<<<< HEAD
 pydantic
 pydantic-settings
 mlflow
@@ -7,3 +8,10 @@ scikit-learn
 slowapi
 python-dotenv
 psutil==7.2.1
+=======
+pydantic>=2.0
+pydantic-settings>=2.0
+mlflow
+scikit-learn
+numpy
+>>>>>>> 3a8f292167f01c81453fa617cdd5b31c9faf48f2

@@ -12,11 +12,18 @@ from app.middleware import abuse_monitor
 from app.routes.health import router as health_router
 from app.routes.predict import router as predict_router
 
+from inference_service.app.config import settings
+from inference_service.app.routes.health import router as health_router
+from inference_service.app.routes.predict import router as predict_router
+
+
+
 
 app = FastAPI(
     title="Security ML Inference Service",
     version="1.0.0",
 )
+
 
 # -----------------------------
 # Rate Limiting
@@ -39,6 +46,9 @@ app.middleware("http")(abuse_monitor)
 # -----------------------------
 # Routers
 # -----------------------------
+
+# Routers
+
 app.include_router(health_router)
 app.include_router(predict_router)
 

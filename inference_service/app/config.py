@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+
 # -----------------------------
 # Ensure MLflow auth works everywhere
 # -----------------------------
@@ -49,3 +50,10 @@ if settings.mlflow_tracking_username:
 
 if settings.mlflow_tracking_password:
     os.environ["MLFLOW_TRACKING_PASSWORD"] = settings.mlflow_tracking_password
+
+# ✅ Ensure MLflow auth works in CI & prod
+if settings.mlflow_tracking_username:
+    os.environ["MLFLOW_TRACKING_USERNAME"] = settings.mlflow_tracking_username
+if settings.mlflow_tracking_password:
+    os.environ["MLFLOW_TRACKING_PASSWORD"] = settings.mlflow_tracking_password
+
