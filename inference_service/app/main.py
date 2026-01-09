@@ -1,5 +1,3 @@
-# inference_service/app/main.py
-
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -18,11 +16,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-
 # -----------------------------
-# Rate Limiting (CI-safe)
+# Rate Limiting (CI + Docker SAFE)
 # -----------------------------
-try:
+if limiter is not None:
     app.state.limiter = limiter
 
     app.add_exception_handler(
@@ -34,24 +31,19 @@ try:
     )
 
     app.add_middleware(SlowAPIMiddleware)
-
-except Exception as e:
-    # 🔒 Do NOT crash CI if rate-limiting config is missing
-    print(f"⚠️ Rate limiting disabled: {e}")
-
+else:
+    print("⚠️ Rate limiting disabled (no limiter available)")
 
 # -----------------------------
 # Security Middleware
 # -----------------------------
 app.middleware("http")(abuse_monitor)
 
-
 # -----------------------------
 # Routers
 # -----------------------------
 app.include_router(health_router)
 app.include_router(predict_router)
-
 
 # -----------------------------
 # Root

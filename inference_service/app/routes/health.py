@@ -4,8 +4,5 @@ router = APIRouter(tags=["Health"])
 
 
 @router.get("/health")
-def health_check():
-    return {
-        "status": "ok",
-        "service": "security-ml-inference"
-    }
+def health():
+    return {"status": "ok"}
