@@ -1,8 +1,9 @@
 # inference_service/app/config.py
 
 import os
+from pydantic_settings import BaseSettings
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -25,10 +26,9 @@ class Settings(BaseSettings):
     model_stage: str = "Staging"
 
     # -----------------------------
-    # Security & Safety Controls
+    # Security
     # -----------------------------
     safe_mode: bool = False
-
     api_key: str | None = None
     rate_limit: str = "30/minute"
 
@@ -37,14 +37,14 @@ class Settings(BaseSettings):
         env_prefix="INFERENCE_",
         env_file=".env",
         case_sensitive=False,
-        protected_namespaces=("settings_",),
+        protected_namespaces=(),  # fixes model_* warnings
     )
 
 
 settings = Settings()
 
 # -----------------------------
-# Ensure MLflow auth works everywhere
+# Export MLflow creds to env
 # -----------------------------
 if settings.mlflow_tracking_username:
     os.environ["MLFLOW_TRACKING_USERNAME"] = settings.mlflow_tracking_username
