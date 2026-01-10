@@ -35,16 +35,17 @@ def predict(request: PredictionRequest):
 
     prediction = int(prob >= request.threshold)
 
-    risk = "LOW"
     if prob >= 0.8:
         risk = "CRITICAL"
     elif prob >= 0.5:
         risk = "HIGH"
+    else:
+        risk = "LOW"
 
-    return {
-        "prediction": prediction,
-        "probability": round(prob, 4),
-        "risk_level": risk,
-        "latency_ms": latency_ms,
-        "model_stage": settings.model_stage,
-    }
+    return PredictionResponse(
+        prediction=prediction,
+        probability=round(prob, 4),
+        risk_level=risk,
+        latency_ms=latency_ms,
+        model_stage=settings.model_stage,
+    )
