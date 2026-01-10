@@ -1,3 +1,5 @@
+# inference_service/app/routes/predict.py
+
 from fastapi import APIRouter, Depends
 from time import time
 
@@ -6,6 +8,7 @@ from app.model_loader import get_model
 from app.safety import enforce_prediction_allowed
 from app.auth import require_api_key
 from app.config import settings
+from app.metrics import record_request
 
 router = APIRouter(prefix="/predict", tags=["Inference"])
 
@@ -30,8 +33,18 @@ def predict(request: PredictionRequest):
     ]]
 
     start = time()
-    prob = float(model.predict(features)[0])
+
+    try:
+        prob = float(model.predict(features)[0])
+        success = True
+    except Exception:
+        success = False
+        record_request(success=False)
+        raise
+
     latency_ms = round((time() - start) * 1000, 2)
+
+    record_request(success=True)
 
     prediction = int(prob >= request.threshold)
 
@@ -42,10 +55,10 @@ def predict(request: PredictionRequest):
     else:
         risk = "LOW"
 
-    return PredictionResponse(
-        prediction=prediction,
-        probability=round(prob, 4),
-        risk_level=risk,
-        latency_ms=latency_ms,
-        model_stage=settings.model_stage,
-    )
+    return {
+        "prediction": prediction,
+        "probability": round(prob, 4),
+        "risk_level": risk,
+        "latency_ms": latency_ms,
+        "model_stage": settings.model_stage,
+    }
