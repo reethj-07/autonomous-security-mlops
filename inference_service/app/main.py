@@ -9,6 +9,7 @@ from app.rate_limit import limiter
 from app.middleware import abuse_monitor
 from app.routes.health import router as health_router
 from app.routes.predict import router as predict_router
+from app.routes.metrics import router as metrics_router
 
 
 app = FastAPI(
@@ -44,6 +45,8 @@ app.middleware("http")(abuse_monitor)
 # -----------------------------
 app.include_router(health_router)
 app.include_router(predict_router)
+app.include_router(metrics_router)
+
 
 # -----------------------------
 # Root

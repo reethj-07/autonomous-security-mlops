@@ -2,6 +2,11 @@
 
 from fastapi import APIRouter, Depends
 from time import time
+from app.metrics import (
+    REQUEST_COUNT,
+    ERROR_COUNT,
+    LATENCY_HISTOGRAM,
+)
 
 from app.schemas import PredictionRequest, PredictionResponse
 from app.model_loader import get_model
@@ -19,46 +24,44 @@ router = APIRouter(prefix="/predict", tags=["Inference"])
     dependencies=[Depends(require_api_key)],
 )
 def predict(request: PredictionRequest):
+    REQUEST_COUNT.inc()
     enforce_prediction_allowed()
 
-    model = get_model()
-
-    features = [[
-        request.event_hour,
-        request.is_login_failure,
-        request.is_privilege_change,
-        request.request_length,
-        request.has_sql_keywords,
-        request.is_admin_path,
-    ]]
-
-    start = time()
-
     try:
+        model = get_model()
+
+        features = [[
+            request.event_hour,
+            request.is_login_failure,
+            request.is_privilege_change,
+            request.request_length,
+            request.has_sql_keywords,
+            request.is_admin_path,
+        ]]
+
+        start = time()
         prob = float(model.predict(features)[0])
-        success = True
+        latency_ms = round((time() - start) * 1000, 2)
+
+        LATENCY_HISTOGRAM.observe(latency_ms)
+
+        prediction = int(prob >= request.threshold)
+
+        risk = "LOW"
+        if prob >= 0.8:
+            risk = "CRITICAL"
+        elif prob >= 0.5:
+            risk = "HIGH"
+
+        return {
+            "prediction": prediction,
+            "probability": round(prob, 4),
+            "risk_level": risk,
+            "latency_ms": latency_ms,
+            "model_stage": settings.model_stage,
+        }
+
     except Exception:
-        success = False
-        record_request(success=False)
+        ERROR_COUNT.inc()
         raise
 
-    latency_ms = round((time() - start) * 1000, 2)
-
-    record_request(success=True)
-
-    prediction = int(prob >= request.threshold)
-
-    if prob >= 0.8:
-        risk = "CRITICAL"
-    elif prob >= 0.5:
-        risk = "HIGH"
-    else:
-        risk = "LOW"
-
-    return {
-        "prediction": prediction,
-        "probability": round(prob, 4),
-        "risk_level": risk,
-        "latency_ms": latency_ms,
-        "model_stage": settings.model_stage,
-    }

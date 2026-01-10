@@ -1,21 +1,26 @@
 # inference_service/app/metrics.py
 
-from threading import Lock
+from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
+from fastapi import APIRouter, Response
 
-_METRICS = {
-    "total_requests": 0,
-    "failed_requests": 0,
-}
+router = APIRouter(tags=["Metrics"])
 
-_lock = Lock()
-
-
-def record_request(success: bool):
-    with _lock:
-        _METRICS["total_requests"] += 1
-        if not success:
-            _METRICS["failed_requests"] += 1
+# --------------------------------------
+# Model runtime metrics
+# --------------------------------------
+MODEL_STAGE = Gauge(
+    "model_loaded_stage",
+    "Currently loaded ML model stage",
+    ["stage"],
+)
 
 
-def get_metrics():
-    return dict(_METRICS)
+@router.get("/metrics")
+def metrics():
+    """
+    Prometheus-compatible metrics endpoint
+    """
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
