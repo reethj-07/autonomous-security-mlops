@@ -61,25 +61,31 @@ flowchart TD
     A[GitHub Push] --> B[GitHub Actions CI]
 
     B --> C[Train Model]
-    C --> D[Register in MLflow]
+    C --> D[Register Model in MLflow]
     D --> E[Promote Model Stage]
 
     B --> F[Inference CI]
     F --> G[Docker Build]
-
     G --> H[Push Image to GHCR]
 
     H --> I[Docker Runtime]
     I --> J[FastAPI Inference Service]
 
-    J --> K[/predict API]
-    J --> L[/health API]
-    J --> M[/metrics API]
+    J --> K[Predict Endpoint]
+    J --> L[Health Endpoint]
+    J --> M[Metrics Endpoint]
 
     K --> N[MLflow Model Registry]
-    N -->|Prod Fails| O[Fallback to Staging]
+    N -->|Prod Load Fails| O[Fallback to Staging]
+
 
 ```
+---
+
+## Project Structure
+
+
+
 ---
 
 ## 🔄 CI/CD Pipeline
