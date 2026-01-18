@@ -63,7 +63,6 @@ flowchart TD
     B --> C[Train Model]
     C --> D[Register Model in MLflow]
     D --> E[Promote Model Stage]
-
     B --> F[Inference CI]
     F --> G[Docker Build]
     G --> H[Push Image to GHCR]
