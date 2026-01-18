@@ -2,7 +2,12 @@
 
 import time
 from fastapi import APIRouter, Response
-from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import (
+    Gauge,
+    Histogram,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
 
 # --------------------------------------
 # Router
@@ -10,12 +15,12 @@ from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 router = APIRouter(tags=["Metrics"])
 
 # --------------------------------------
-# Runtime tracking
+# App lifecycle
 # --------------------------------------
 START_TIME = time.time()
 
 # --------------------------------------
-# Prometheus Gauges
+# Model runtime metrics
 # --------------------------------------
 MODEL_LOADED = Gauge(
     "model_loaded",
@@ -29,13 +34,21 @@ MODEL_STAGE = Gauge(
 )
 
 # --------------------------------------
-# Health / CI-friendly metrics
+# Request latency histogram
+# --------------------------------------
+REQUEST_LATENCY = Histogram(
+    "inference_request_latency_ms",
+    "Inference request latency in milliseconds",
+    buckets=(10, 25, 50, 100, 200, 500, 1000, 2000),
+)
+
+# --------------------------------------
+# Health & CI-safe summary
 # --------------------------------------
 def get_metrics():
     """
-    Lightweight runtime metrics used by /health and CI checks
+    Lightweight runtime metrics for /health & CI
     """
-    # Local import to avoid circular dependency
     from app.model_loader import MODEL_STATE
 
     return {
