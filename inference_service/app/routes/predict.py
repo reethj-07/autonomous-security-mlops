@@ -14,6 +14,7 @@ from app.safety import enforce_prediction_allowed
 from app.auth import require_api_key
 from app.config import settings
 from app.metrics import record_request
+from app.metrics import REQUEST_LATENCY
 
 router = APIRouter(prefix="/predict", tags=["Inference"])
 
