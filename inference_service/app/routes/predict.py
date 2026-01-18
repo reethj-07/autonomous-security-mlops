@@ -14,7 +14,7 @@ from app.safety import enforce_prediction_allowed
 from app.auth import require_api_key
 from app.config import settings
 from app.metrics import record_request
-from app.metrics import REQUEST_LATENCY
+from app.metrics import REQUEST_COUNT, REQUEST_LATENCY
 
 router = APIRouter(prefix="/predict", tags=["Inference"])
 
@@ -40,11 +40,14 @@ def predict(request: PredictionRequest):
             request.is_admin_path,
         ]]
 
+        REQUEST_COUNT.inc()
+
         start = time()
         prob = float(model.predict(features)[0])
         latency_ms = round((time() - start) * 1000, 2)
 
-        LATENCY_HISTOGRAM.observe(latency_ms)
+        REQUEST_LATENCY.observe(latency_ms)
+
 
         prediction = int(prob >= request.threshold)
 
