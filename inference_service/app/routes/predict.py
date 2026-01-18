@@ -2,19 +2,17 @@
 
 from fastapi import APIRouter, Depends
 from time import time
-from app.metrics import (
-    REQUEST_COUNT,
-    ERROR_COUNT,
-    LATENCY_HISTOGRAM,
-)
 
 from app.schemas import PredictionRequest, PredictionResponse
 from app.model_loader import get_model
 from app.safety import enforce_prediction_allowed
 from app.auth import require_api_key
 from app.config import settings
-from app.metrics import record_request
-from app.metrics import REQUEST_COUNT, REQUEST_LATENCY
+
+from app.metrics import (
+    REQUEST_COUNT,
+    REQUEST_LATENCY,
+)
 
 router = APIRouter(prefix="/predict", tags=["Inference"])
 
@@ -25,47 +23,48 @@ router = APIRouter(prefix="/predict", tags=["Inference"])
     dependencies=[Depends(require_api_key)],
 )
 def predict(request: PredictionRequest):
+    """
+    Perform model inference with metrics tracking
+    """
+
+    # Count incoming request
     REQUEST_COUNT.inc()
+
     enforce_prediction_allowed()
+    model = get_model()
 
-    try:
-        model = get_model()
+    features = [[
+        request.event_hour,
+        request.is_login_failure,
+        request.is_privilege_change,
+        request.request_length,
+        request.has_sql_keywords,
+        request.is_admin_path,
+    ]]
 
-        features = [[
-            request.event_hour,
-            request.is_login_failure,
-            request.is_privilege_change,
-            request.request_length,
-            request.has_sql_keywords,
-            request.is_admin_path,
-        ]]
+    start = time()
 
-        REQUEST_COUNT.inc()
+    # Run inference
+    prob = float(model.predict(features)[0])
 
-        start = time()
-        prob = float(model.predict(features)[0])
-        latency_ms = round((time() - start) * 1000, 2)
+    latency_ms = round((time() - start) * 1000, 2)
 
-        REQUEST_LATENCY.observe(latency_ms)
+    # Observe latency
+    REQUEST_LATENCY.observe(latency_ms)
 
+    prediction = int(prob >= request.threshold)
 
-        prediction = int(prob >= request.threshold)
-
+    if prob >= 0.8:
+        risk = "CRITICAL"
+    elif prob >= 0.5:
+        risk = "HIGH"
+    else:
         risk = "LOW"
-        if prob >= 0.8:
-            risk = "CRITICAL"
-        elif prob >= 0.5:
-            risk = "HIGH"
 
-        return {
-            "prediction": prediction,
-            "probability": round(prob, 4),
-            "risk_level": risk,
-            "latency_ms": latency_ms,
-            "model_stage": settings.model_stage,
-        }
-
-    except Exception:
-        ERROR_COUNT.inc()
-        raise
-
+    return {
+        "prediction": prediction,
+        "probability": round(prob, 4),
+        "risk_level": risk,
+        "latency_ms": latency_ms,
+        "model_stage": settings.model_stage,
+    }
