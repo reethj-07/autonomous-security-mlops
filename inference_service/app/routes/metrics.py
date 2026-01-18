@@ -10,19 +10,16 @@ from prometheus_client import (
     CONTENT_TYPE_LATEST,
 )
 
-# --------------------------------------
+# -------------------------------------------------
 # Router
-# --------------------------------------
+# -------------------------------------------------
 router = APIRouter(tags=["Metrics"])
 
-# --------------------------------------
-# App lifecycle
-# --------------------------------------
 START_TIME = time.time()
 
-# --------------------------------------
-# Request metrics
-# --------------------------------------
+# -------------------------------------------------
+# Request-level metrics (MUST be module-level)
+# -------------------------------------------------
 REQUEST_COUNT = Counter(
     "inference_requests_total",
     "Total number of inference requests",
@@ -34,9 +31,9 @@ REQUEST_LATENCY = Histogram(
     buckets=(10, 25, 50, 100, 200, 500, 1000, 2000),
 )
 
-# --------------------------------------
-# Model runtime metrics
-# --------------------------------------
+# -------------------------------------------------
+# Model-level metrics
+# -------------------------------------------------
 MODEL_LOADED = Gauge(
     "model_loaded",
     "Whether a model is currently loaded (1 = yes, 0 = no)",
@@ -48,13 +45,10 @@ MODEL_STAGE = Gauge(
     ["stage"],
 )
 
-# --------------------------------------
-# Health summary (CI + LB safe)
-# --------------------------------------
-def get_metrics():
-    """
-    Lightweight runtime summary for /health and CI
-    """
+# -------------------------------------------------
+# Runtime snapshot helper
+# -------------------------------------------------
+def get_runtime_metrics():
     from app.model_loader import MODEL_STATE
 
     return {
@@ -63,14 +57,11 @@ def get_metrics():
         "served_model_stage": MODEL_STATE["served_stage"],
     }
 
-# --------------------------------------
+# -------------------------------------------------
 # Prometheus endpoint
-# --------------------------------------
+# -------------------------------------------------
 @router.get("/metrics")
 def metrics():
-    """
-    Prometheus-compatible metrics endpoint
-    """
     return Response(
         generate_latest(),
         media_type=CONTENT_TYPE_LATEST,

@@ -10,7 +10,7 @@ from app.middleware import abuse_monitor
 from app.routes.health import router as health_router
 from app.routes.predict import router as predict_router
 from app.routes.metrics import router as metrics_router
-
+from app.metrics import router as metrics_router
 
 app = FastAPI(
     title="Security ML Inference Service",
