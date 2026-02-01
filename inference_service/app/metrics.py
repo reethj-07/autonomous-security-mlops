@@ -4,24 +4,25 @@ import time
 from fastapi import APIRouter, Response
 from prometheus_client import (
     Gauge,
+    Counter,
     Histogram,
     generate_latest,
     CONTENT_TYPE_LATEST,
 )
 
-# --------------------------------------
+# -----------------------------------------------
 # Router
-# --------------------------------------
+# -----------------------------------------------
 router = APIRouter(tags=["Metrics"])
 
-# --------------------------------------
+# -----------------------------------------------
 # App lifecycle
-# --------------------------------------
+# -----------------------------------------------
 START_TIME = time.time()
 
-# --------------------------------------
+# -----------------------------------------------
 # Model runtime metrics
-# --------------------------------------
+# -----------------------------------------------
 MODEL_LOADED = Gauge(
     "model_loaded",
     "Whether a model is currently loaded (1 = yes, 0 = no)",
@@ -33,18 +34,24 @@ MODEL_STAGE = Gauge(
     ["stage"],
 )
 
-# --------------------------------------
-# Request latency histogram
-# --------------------------------------
+# -----------------------------------------------
+# Request metrics
+# -----------------------------------------------
+REQUEST_COUNT = Counter(
+    "inference_requests_total",
+    "Total number of inference requests",
+    ["status"],
+)
+
 REQUEST_LATENCY = Histogram(
     "inference_request_latency_ms",
     "Inference request latency in milliseconds",
     buckets=(10, 25, 50, 100, 200, 500, 1000, 2000),
 )
 
-# --------------------------------------
+# -----------------------------------------------
 # Health & CI-safe summary
-# --------------------------------------
+# -----------------------------------------------
 def get_metrics():
     """
     Lightweight runtime metrics for /health & CI
@@ -57,9 +64,9 @@ def get_metrics():
         "served_model_stage": MODEL_STATE["served_stage"],
     }
 
-# --------------------------------------
+# -----------------------------------------------
 # Prometheus endpoint
-# --------------------------------------
+# -----------------------------------------------
 @router.get("/metrics")
 def metrics():
     """
